@@ -42,7 +42,7 @@ public class ApplicationMethods {
     public static String getApplicationVersion(Context mContext) {
         try {
             PackageInfo packageInfo = mContext.getPackageManager().getPackageInfo(mContext.getPackageName(), PackageManager.GET_CONFIGURATIONS);
-            return packageInfo.versionName + " (" + packageInfo.versionCode + ")";
+            return packageInfo.versionName ;
         } catch (Exception e) {
             e.printStackTrace();
         }
