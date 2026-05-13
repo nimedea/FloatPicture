@@ -2,8 +2,10 @@ package tool.xfy9326.floatpicture.Activities;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.MenuItem;
 import android.widget.TextView;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
@@ -35,6 +37,15 @@ public class AboutActivity extends AppCompatActivity {
 
         TextView open_source = findViewById(R.id.textview_about_open_source);
         open_source.setOnClickListener(v -> startActivity(new Intent(AboutActivity.this, LicenseActivity.class)));
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == android.R.id.home) {
+            finish();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
 
 }

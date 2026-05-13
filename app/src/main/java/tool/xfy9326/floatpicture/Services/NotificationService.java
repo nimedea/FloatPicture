@@ -37,19 +37,11 @@ public class NotificationService extends Service {
     @Override
     public void onConfigurationChanged(android.content.res.Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-
-        // 1. 获取最新的屏幕尺寸
         android.view.WindowManager wm = (android.view.WindowManager) getSystemService(Context.WINDOW_SERVICE);
         android.graphics.Point size = new android.graphics.Point();
-        wm.getDefaultDisplay().getRealSize(size); // 使用 RealSize 获取包含刘海屏的真实宽高
-
-        // 2. 这里需要调用你之前的坐标换算逻辑
-        // 注意：由于 Service 此时可能管理着多个悬浮窗，
-        // 你需要遍历当前显示的 FloatImageView 并更新它们的位置。
-
-        // 示例逻辑：
-        // if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) { ... 换算 ... }
+        wm.getDefaultDisplay().getRealSize(size);
     }
+
     private static void createNotificationChannel(@NonNull Context context, @NonNull NotificationManagerCompat notificationManager) {
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel notificationChannel = notificationManager.getNotificationChannel(CHANNEL_ID);
@@ -74,7 +66,11 @@ public class NotificationService extends Service {
             IntentFilter intentFilter = new IntentFilter();
             intentFilter.addAction(Config.INTENT_ACTION_NOTIFICATION_BUTTON_CLICK);
             intentFilter.addAction(Config.INTENT_ACTION_NOTIFICATION_UPDATE_COUNT);
-            registerReceiver(notificationButtonBroadcastReceiver, intentFilter);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(notificationButtonBroadcastReceiver, intentFilter, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(notificationButtonBroadcastReceiver, intentFilter);
+            }
         }
         if (builder_manage == null) {
             builder_manage = createNotification();
@@ -88,9 +84,23 @@ public class NotificationService extends Service {
         return null;
     }
 
+    /**
+     * 【新增】：监听 App 从后台任务栏被划掉的事件
+     */
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        super.onTaskRemoved(rootIntent);
+        // 移除所有悬浮窗
+        ManageMethods.setAllWindowsVisible(this, false);
+        // 停止前台服务
+        stopSelf();
+    }
+
     @Override
     public void onDestroy() {
-        super.onDestroy();
+        // 在服务销毁时也确保窗口被关闭
+        ManageMethods.setAllWindowsVisible(this, false);
+        
         if (notificationButtonBroadcastReceiver != null) {
             unregisterReceiver(notificationButtonBroadcastReceiver);
             notificationButtonBroadcastReceiver = null;
@@ -99,12 +109,12 @@ public class NotificationService extends Service {
             stopForeground(true);
             builder_manage = null;
         }
+        super.onDestroy();
     }
 
     private NotificationCompat.Builder createNotification() {
         MainApplication mainApplication = (MainApplication) getApplicationContext();
         mainApplication.setWinVisible(true);
-        //Create Notification
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID);
 
         NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
@@ -112,13 +122,11 @@ public class NotificationService extends Service {
 
         builder.setSmallIcon(R.drawable.ic_notification);
 
-        //Content Intent
         Intent intent_main = new Intent(this, MainActivity.class);
         intent_main.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent pendingIntent_main = PendingIntent.getActivity(this, 0, intent_main, PendingIntent.FLAG_UPDATE_CURRENT);
+        PendingIntent pendingIntent_main = PendingIntent.getActivity(this, 0, intent_main, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         builder.setContentIntent(pendingIntent_main);
 
-        //Content View
         remoteViews = new RemoteViews(getPackageName(), R.layout.notification_manage);
         remoteViews.setImageViewResource(R.id.imageview_notification_application, R.mipmap.ic_launcher);
         remoteViews.setTextViewText(R.id.textview_picture_num, getString(R.string.notification_picture_count, String.valueOf(mainApplication.getViewCount())));
@@ -126,7 +134,7 @@ public class NotificationService extends Service {
         remoteViews.setImageViewResource(R.id.imageview_set_picture_view, R.drawable.ic_invisible);
         Intent intent_picture_show = new Intent();
         intent_picture_show.setAction(Config.INTENT_ACTION_NOTIFICATION_BUTTON_CLICK);
-        PendingIntent pendingIntent_picture_show = PendingIntent.getBroadcast(this, 1, intent_picture_show, PendingIntent.FLAG_UPDATE_CURRENT);
+        PendingIntent pendingIntent_picture_show = PendingIntent.getBroadcast(this, 1, intent_picture_show, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         remoteViews.setOnClickPendingIntent(R.id.imageview_set_picture_view, pendingIntent_picture_show);
 
         builder.setContent(remoteViews);
@@ -162,5 +170,4 @@ public class NotificationService extends Service {
             }
         }
     }
-
 }
