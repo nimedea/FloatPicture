@@ -5,12 +5,12 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId "tool.xfy9326.floatpicture"
+        applicationId 'tool.nimedea.floatpicture'
         minSdkVersion 19
         //noinspection ExpiredTargetSdkVersion
         targetSdkVersion 29
-        versionCode 22
-        versionName '2.8.2'
+        versionCode 1
+        versionName '1.0.0'
 
         resourceConfigurations.add("zh")
 
