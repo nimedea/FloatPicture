@@ -1,0 +1,1088 @@
+package tool.xfy9326.floatpicture.View;
+
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.Point;
+import android.os.Bundle;
+import android.text.InputType;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
+import android.widget.SeekBar;
+import android.widget.TextView;
+import android.widget.Toast;
+import androidx.core.content.ContextCompat;
+import android.content.Context;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
+import androidx.preference.CheckBoxPreference;
+import androidx.preference.Preference;
+import androidx.preference.PreferenceFragmentCompat;
+import androidx.preference.PreferenceManager;
+
+import java.util.Objects;
+
+import tool.xfy9326.floatpicture.Methods.ImageMethods;
+import tool.xfy9326.floatpicture.Methods.WindowsMethods;
+import tool.xfy9326.floatpicture.R;
+import tool.xfy9326.floatpicture.Utils.Config;
+import tool.xfy9326.floatpicture.Utils.PictureData;
+
+public class PictureSettingsFragment extends PreferenceFragmentCompat {
+    private final static String WINDOW_CREATED = "WINDOW_CREATED";
+    private boolean Edit_Mode;
+    private boolean Window_Created;
+    private boolean onUseEditPicture = false;
+    private LayoutInflater inflater;
+    private PictureData pictureData;
+    private String PictureId;
+    private String PictureName;
+    private WindowManager windowManager;
+    private FloatImageView floatImageView;
+    private Bitmap bitmap;
+    private Bitmap bitmap_Edit;
+    private FloatImageView floatImageView_Edit;
+    private boolean touch_and_move;
+    private float default_zoom;
+    private float zoom_x;
+    private float zoom_y;
+    private float zoom_x_temp;
+    private float zoom_y_temp;
+    private float picture_degree;
+    private float picture_degree_temp;
+    private float picture_alpha;
+    private float picture_alpha_temp;
+    private int position_x;
+    private int position_y;
+    private int position_x_temp;
+    private int position_y_temp;
+    private boolean allow_picture_over_layout;
+    private int lastScreenWidth;
+    private int lastScreenHeight;
+    private AlertDialog currentDialog;
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        Window_Created = false;
+        Edit_Mode = false;
+        pictureData = new PictureData();
+        inflater = LayoutInflater.from(getActivity());
+        windowManager = WindowsMethods.getWindowManager(requireActivity());
+    }
+
+    @Override
+    public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
+        addPreferencesFromResource(R.xml.fragment_picture_settings);
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+
+        // 记录启动时的屏幕尺寸
+        Point size = new Point();
+        requireActivity().getWindowManager().getDefaultDisplay().getSize(size);
+        lastScreenWidth = size.x;
+        lastScreenHeight = size.y;
+
+        restoreData(savedInstanceState);
+        setMode();
+        PreferenceSet();
+    }
+
+    public void onConfigurationChanged(@NonNull android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+
+        // 1. 同步当前悬浮窗被拖动后的最新坐标
+        syncPositionFromView();
+
+        // 2. 重新获取当前屏幕真实的物理宽高（解决高度识别错误的关键）
+        Point size = new Point();
+        requireActivity().getWindowManager().getDefaultDisplay().getRealSize(size);
+        lastScreenWidth = size.x;
+        lastScreenHeight = size.y;
+
+        // 3. 刷新悬浮窗。注意：这里不需要修改 picture_degree，
+        // 系统坐标系旋转后，重新 updateWindow 即可让悬浮窗适应新方向。
+        refreshFloatingWindow();
+    }
+
+    private void refreshFloatingWindow() {
+        if (floatImageView != null && !onUseEditPicture) {
+            // 使用原始记录的 picture_degree，不要使用被修改过的偏移量
+            Bitmap rotatedBitmap = ImageMethods.resizeBitmap(bitmap, zoom_x, zoom_y, picture_degree);
+            floatImageView.setImageBitmap(rotatedBitmap);
+
+            // 更新窗口
+            WindowsMethods.updateWindow(windowManager, floatImageView, touch_and_move, allow_picture_over_layout, position_x, position_y);
+
+            // 同步 View 内部坐标
+            syncPositionToView(floatImageView, position_x, position_y);
+        }
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle outState) {
+        outState.putBoolean(WINDOW_CREATED, true);
+        super.onSaveInstanceState(outState);
+    }
+
+    private void restoreData(Bundle savedInstanceState) {
+        if (savedInstanceState != null) {
+            Window_Created = savedInstanceState.getBoolean(WINDOW_CREATED, false);
+            windowManager = WindowsMethods.getWindowManager(requireActivity());
+        }
+    }
+
+    private void setMode() {
+        Intent intent = Objects.requireNonNull(requireActivity().getIntent());
+        Edit_Mode = intent.getBooleanExtra(Config.INTENT_PICTURE_EDIT_MODE, false);
+        AlertDialog.Builder loading = new AlertDialog.Builder(requireActivity());
+        loading.setCancelable(false);
+        if (!Edit_Mode) {
+            loading.setOnCancelListener(dialog -> {
+                WindowsMethods.createWindow(windowManager, floatImageView, touch_and_move, allow_picture_over_layout, position_x, position_y);
+                syncPositionToView(floatImageView, position_x, position_y);
+            });
+        }
+        View mView = inflater.inflate(R.layout.dialog_loading, requireActivity().findViewById(R.id.layout_dialog_loading));
+        loading.setView(mView);
+        final AlertDialog alertDialog = loading.show();
+        new Thread(() -> {
+            if (!Window_Created) {
+                if (Edit_Mode) {
+                    //Edit
+                    PictureId = intent.getStringExtra(Config.INTENT_PICTURE_EDIT_ID);
+                    pictureData.setDataControl(PictureId);
+                    PictureName = pictureData.getListArray().get(PictureId);
+                    position_x = pictureData.getInt(Config.DATA_PICTURE_POSITION_X, Config.DATA_DEFAULT_PICTURE_POSITION_X);
+                    position_y = pictureData.getInt(Config.DATA_PICTURE_POSITION_Y, Config.DATA_DEFAULT_PICTURE_POSITION_Y);
+                    picture_degree = pictureData.getFloat(Config.DATA_PICTURE_DEGREE, Config.DATA_DEFAULT_PICTURE_DEGREE);
+                    picture_alpha = pictureData.getFloat(Config.DATA_PICTURE_ALPHA, Config.DATA_DEFAULT_PICTURE_ALPHA);
+                    touch_and_move = pictureData.getBoolean(Config.DATA_PICTURE_TOUCH_AND_MOVE, Config.DATA_DEFAULT_PICTURE_TOUCH_AND_MOVE);
+                    allow_picture_over_layout = pictureData.getBoolean(Config.DATA_ALLOW_PICTURE_OVER_LAYOUT, Config.DATA_DEFAULT_ALLOW_PICTURE_OVER_LAYOUT);
+                    bitmap = ImageMethods.getShowBitmap(requireContext(), PictureId);
+                    default_zoom = ImageMethods.getDefaultZoom(requireContext(), bitmap, false);
+                    float zoom = pictureData.getFloat(Config.DATA_PICTURE_ZOOM, default_zoom);
+                    zoom_x = pictureData.getFloat(Config.DATA_PICTURE_ZOOM_X, zoom);
+                    zoom_y = pictureData.getFloat(Config.DATA_PICTURE_ZOOM_Y, zoom);
+                    floatImageView = ImageMethods.getFloatImageViewById(requireContext(), PictureId);
+                } else {
+                    //New
+                    PictureId = ImageMethods.setNewImage(getActivity(), intent.getData());
+                    pictureData.setDataControl(PictureId);
+                    PictureName = getString(R.string.new_picture_name);
+                    position_x = Config.DATA_DEFAULT_PICTURE_POSITION_X;
+                    position_y = Config.DATA_DEFAULT_PICTURE_POSITION_Y;
+                    picture_alpha = Config.DATA_DEFAULT_PICTURE_ALPHA;
+                    picture_degree = Config.DATA_DEFAULT_PICTURE_DEGREE;
+                    touch_and_move = Config.DATA_DEFAULT_PICTURE_TOUCH_AND_MOVE;
+                    allow_picture_over_layout = Config.DATA_DEFAULT_ALLOW_PICTURE_OVER_LAYOUT;
+                    bitmap = ImageMethods.getShowBitmap(requireContext(), PictureId);
+                    default_zoom = ImageMethods.getDefaultZoom(requireContext(), bitmap, false);
+                    zoom_x = default_zoom;
+                    zoom_y = default_zoom;
+                    floatImageView = ImageMethods.createPictureView(requireContext(), bitmap, touch_and_move, allow_picture_over_layout, zoom_x, zoom_y, picture_degree);
+                    floatImageView.setAlpha(picture_alpha);
+                    floatImageView.setPictureId(PictureId);
+                }
+                alertDialog.cancel();
+            }
+        }).start();
+    }
+
+    @NonNull
+    private Preference requirePreference(CharSequence key) {
+        return Objects.requireNonNull(findPreference(key));
+    }
+
+    private void PreferenceSet() {
+        requirePreference(Config.PREFERENCE_PICTURE_NAME).setOnPreferenceClickListener(preference -> {
+            setPictureName();
+            return true;
+        });
+        requirePreference(Config.PREFERENCE_PICTURE_RESIZE).setOnPreferenceClickListener(preference -> {
+            setPictureSize();
+            return true;
+        });
+        requirePreference(Config.PREFERENCE_PICTURE_DEGREE).setOnPreferenceClickListener(preference -> {
+            setPictureDegree();
+            return true;
+        });
+        requirePreference(Config.PREFERENCE_PICTURE_ALPHA).setOnPreferenceClickListener(preference -> {
+            setPictureAlpha();
+            return true;
+        });
+        CheckBoxPreference preference_touch_and_move = findPreference(Config.PREFERENCE_PICTURE_TOUCH_AND_MOVE);
+        assert preference_touch_and_move != null;
+        preference_touch_and_move.setChecked(touch_and_move);
+        preference_touch_and_move.setOnPreferenceChangeListener((preference, newValue) -> {
+            if ((boolean) newValue) {
+                PictureTouchAndMoveAlert();
+                return false;
+            } else {
+                setPictureTouchAndMove(false);
+                return true;
+            }
+        });
+        CheckBoxPreference preference_over_layout = findPreference(Config.PREFERENCE_ALLOW_PICTURE_OVER_LAYOUT);
+        assert preference_over_layout != null;
+        preference_over_layout.setChecked(allow_picture_over_layout);
+        preference_over_layout.setOnPreferenceChangeListener((preference, newValue) -> {
+            setAllowPictureOverLayout((boolean) newValue);
+            return true;
+        });
+        requirePreference(Config.PREFERENCE_PICTURE_POSITION).setOnPreferenceClickListener(preference -> {
+            setPicturePosition();
+            return true;
+        });
+    }
+
+    private void setAllowPictureOverLayout(boolean allow) {
+        syncPositionFromView();
+        allow_picture_over_layout = allow;
+        windowManager.removeView(floatImageView);
+        floatImageView.setOverLayout(allow_picture_over_layout);
+        WindowsMethods.createWindow(windowManager, floatImageView, touch_and_move, allow, position_x, position_y);
+        syncPositionToView(floatImageView, position_x, position_y);
+    }
+
+    private void setPictureTouchAndMove(boolean touchable_and_moveable) {
+        syncPositionFromView();
+        touch_and_move = touchable_and_moveable;
+        windowManager.removeView(floatImageView);
+        floatImageView.setMoveable(touchable_and_moveable);
+        WindowsMethods.createWindow(windowManager, floatImageView, touchable_and_moveable, allow_picture_over_layout, position_x, position_y);
+        syncPositionToView(floatImageView, position_x, position_y);
+    }
+
+    private void PictureTouchAndMoveAlert() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(requireActivity());
+        builder.setTitle(R.string.settings_picture_touchable_and_moveable);
+        builder.setMessage(R.string.settings_picture_touchable_and_moveable_warn);
+        builder.setCancelable(false);
+        builder.setPositiveButton(R.string.done, (dialog, which) -> {
+            ((CheckBoxPreference) Objects.requireNonNull(findPreference(Config.PREFERENCE_PICTURE_TOUCH_AND_MOVE))).setChecked(true);
+            setPictureTouchAndMove(true);
+        });
+        builder.setNegativeButton(R.string.cancel, null);
+        AlertDialog alertDialog = builder.create();
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            alertDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+        } else {
+            alertDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
+        }
+        alertDialog.show();
+    }
+
+    private void setPictureName() {
+        View mView = inflater.inflate(R.layout.dialog_edit_text, requireActivity().findViewById(R.id.layout_dialog_edit_text));
+        AlertDialog.Builder dialog = new AlertDialog.Builder(requireContext());
+        dialog.setTitle(R.string.settings_picture_name);
+        final EditText editText = mView.findViewById(R.id.edittext_dialog);
+        editText.setText(PictureName);
+        dialog.setPositiveButton(R.string.done, (dialog12, which) -> {
+            if (editText.getText().toString().isEmpty()) {
+                Toast.makeText(getActivity(), R.string.settings_picture_name_warn, Toast.LENGTH_SHORT).show();
+            } else {
+                PictureName = editText.getText().toString();
+            }
+        });
+        dialog.setNegativeButton(R.string.cancel, (dialog1, which) -> {
+            if (editText.getText().toString().isEmpty()) {
+                Toast.makeText(getActivity(), R.string.settings_picture_name_warn, Toast.LENGTH_SHORT).show();
+            }
+        });
+        dialog.setView(mView);
+        AlertDialog alertDialog = dialog.create();
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            alertDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+        } else {
+            alertDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
+        }
+        currentDialog = alertDialog;
+        currentDialog.show();
+    }
+
+    private void setPictureSize() {
+        syncPositionFromView();
+        bitmap_Edit = ImageMethods.getEditBitmap(getActivity(), bitmap);
+        floatImageView_Edit = ImageMethods.createPictureView(getActivity(), bitmap_Edit, touch_and_move, allow_picture_over_layout, zoom_x, zoom_y, picture_degree);
+        onEditPicture(floatImageView_Edit, true, touch_and_move);
+
+        View mView = inflater.inflate(R.layout.dialog_set_resize, requireActivity().findViewById(R.id.layout_dialog_set_resize));
+        AlertDialog.Builder dialog = new AlertDialog.Builder(requireContext());
+        dialog.setTitle(R.string.settings_picture_resize);
+        dialog.setCancelable(false);
+
+        final android.widget.CheckBox checkBoxLockRatio = mView.findViewById(R.id.checkbox_lock_ratio);
+        // Default to true if zoom_x and zoom_y are roughly equal, otherwise false
+        checkBoxLockRatio.setChecked(Math.abs(zoom_x - zoom_y) < 0.001f);
+
+        // 获取包含状态栏和导航栏在内的真实物理尺寸
+        android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
+        requireActivity().getWindowManager().getDefaultDisplay().getMetrics(dm);
+
+        int baseScreenX = dm.widthPixels;
+        int baseScreenY = dm.heightPixels;
+
+        // 将当前旋转角度转换为弧度
+        double angleRad = Math.toRadians(picture_degree);
+        double absCos = Math.abs(Math.cos(angleRad));
+        double absSin = Math.abs(Math.sin(angleRad));
+
+        int w = bitmap.getWidth();
+        int h = bitmap.getHeight();
+
+        // 使用基准尺寸 (baseScreenX, baseScreenY) 来计算最大缩放值
+        float limitX_W = (float) (absCos > 0.001 ? baseScreenX / (w * absCos) : Float.MAX_VALUE);
+        float limitX_H = (float) (absSin > 0.001 ? baseScreenY / (w * absSin) : Float.MAX_VALUE);
+        float calculatedMaxZoomX = Math.min(limitX_W, limitX_H);
+
+        float limitY_W = (float) (absSin > 0.001 ? baseScreenX / (h * absSin) : Float.MAX_VALUE);
+        float limitY_H = (float) (absCos > 0.001 ? baseScreenY / (h * absCos) : Float.MAX_VALUE);
+        float calculatedMaxZoomY = Math.min(limitY_W, limitY_H);
+        // ===========================================================================
+
+        if (allow_picture_over_layout) {
+            calculatedMaxZoomX = calculatedMaxZoomX * 1.1f;
+            calculatedMaxZoomY = calculatedMaxZoomY * 1.1f;
+        }
+
+        // 最终限制：不再取最小值，而是分别限制
+        final float absoluteMaxZoomX = calculatedMaxZoomX;
+        final float absoluteMaxZoomY = calculatedMaxZoomY;
+
+        // X Axis Controls
+        final SeekBar seekBar_x = mView.findViewById(R.id.seekbar_set_size_x);
+        final EditText editText_x = mView.findViewById(R.id.edittext_set_size_x);
+        editText_x.setText(String.format("%.5f", zoom_x));
+        editText_x.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        editText_x.setImeOptions(EditorInfo.IME_ACTION_DONE);
+
+        // Y Axis Controls
+        final SeekBar seekBar_y = mView.findViewById(R.id.seekbar_set_size_y);
+        final EditText editText_y = mView.findViewById(R.id.edittext_set_size_y);
+        editText_y.setText(String.format("%.5f", zoom_y));
+        editText_y.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        editText_y.setImeOptions(EditorInfo.IME_ACTION_DONE);
+
+        zoom_x_temp = zoom_x;
+        zoom_y_temp = zoom_y;
+
+        // 动态更新最大值逻辑
+        Runnable updateLimits = () -> {
+            float targetMaxX = absoluteMaxZoomX;
+            float targetMaxY = absoluteMaxZoomY;
+
+            if (checkBoxLockRatio.isChecked()) {
+                // 如果锁定比例，最大值取两者的较小值，防止一边拖动导致另一边超出屏幕
+                float safeMax = Math.min(absoluteMaxZoomX, absoluteMaxZoomY);
+                targetMaxX = safeMax;
+                targetMaxY = safeMax;
+            }
+
+            seekBar_x.setMax((int) (targetMaxX * 100000));
+            seekBar_y.setMax((int) (targetMaxY * 100000));
+
+            boolean changed = false;
+            // 检查当前值是否超出新限制
+            if (zoom_x_temp > targetMaxX) {
+                zoom_x_temp = targetMaxX;
+                changed = true;
+            }
+            if (zoom_y_temp > targetMaxY) {
+                zoom_y_temp = targetMaxY;
+                changed = true;
+            }
+
+            if (changed) {
+                seekBar_x.setProgress((int) (zoom_x_temp * 100000));
+                editText_x.setText(String.format("%.5f", zoom_x_temp));
+                seekBar_y.setProgress((int) (zoom_y_temp * 100000));
+                editText_y.setText(String.format("%.5f", zoom_y_temp));
+                WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit, touch_and_move, allow_picture_over_layout, zoom_x_temp, zoom_y_temp, picture_degree, position_x, position_y);
+            } else {
+                // 即使值没变，也要更新 Progress 以匹配新的 Max（如果 seekbar 逻辑需要）
+                // 但通常 setMax 会保持 progress 比例或绝对值，这里为了保险重新设置
+                seekBar_x.setProgress((int) (zoom_x_temp * 100000));
+                seekBar_y.setProgress((int) (zoom_y_temp * 100000));
+            }
+        };
+
+        // 初始执行一次
+        updateLimits.run();
+
+        checkBoxLockRatio.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            updateLimits.run();
+            if (isChecked) {
+                // 锁定瞬间，将 Y 同步为 X (或者取均值? 通常是以 X 为主)
+                zoom_y_temp = zoom_x_temp;
+                // 再次检查同步后的值是否合规
+                float safeMax = Math.min(absoluteMaxZoomX, absoluteMaxZoomY);
+                if (zoom_y_temp > safeMax) zoom_y_temp = safeMax;
+                zoom_x_temp = zoom_y_temp;
+
+                seekBar_x.setProgress((int) (zoom_x_temp * 100000));
+                editText_x.setText(String.format("%.5f", zoom_x_temp));
+                seekBar_y.setProgress((int) (zoom_y_temp * 100000));
+                editText_y.setText(String.format("%.5f", zoom_y_temp));
+
+                WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit, touch_and_move, allow_picture_over_layout, zoom_x_temp, zoom_y_temp, picture_degree, position_x, position_y);
+            }
+        });
+
+        SeekBar.OnSeekBarChangeListener seekBarChangeListener = new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser && progress > 0) {
+                    float newZoom = progress / 100000.0f;
+                    if (seekBar == seekBar_x) {
+                        zoom_x_temp = newZoom;
+
+                        editText_x.setText(String.format("%.5f", zoom_x_temp));
+                        if (checkBoxLockRatio.isChecked()) {
+                            // Link Y to X
+                            zoom_y_temp = zoom_x_temp;
+                            // Ensure Y does not exceed its own limit if !allow_picture_over_layout
+                            // But seekBar_y.setProgress will automatically clamp visual progress to max
+                            // However, we should also clamp the value we use for updateWindow
+                            if (!allow_picture_over_layout && zoom_y_temp > absoluteMaxZoomY) {
+                                // If locked, and X is pushed beyond Y's limit, Y stops at its limit?
+                                // Or X is also limited?
+                                // If X limit > Y limit, and we drag X to max. Y tries to go to X's max (which is > Y's max).
+                                // This would make height > screen height.
+                                // If !allow_picture_over_layout, this is invalid.
+                                // But if we clamp Y, ratio is broken.
+                                // If we don't clamp Y, height > screen.
+                                // The user's request "only limited by screen max" implies independence.
+                                // If they check "Lock Ratio", they are creating a conflict if limits differ.
+                                // Let's prioritize satisfying the "limit" over "ratio" if conflict, or just let it clip?
+                                // Standard behavior: clamp to limit.
+                                zoom_y_temp = absoluteMaxZoomY;
+                            } else if (allow_picture_over_layout && zoom_y_temp > absoluteMaxZoomY) {
+                                // Even if allowed over layout, we have a "Max" defined by 1.1x.
+                                zoom_y_temp = absoluteMaxZoomY;
+                            }
+
+                            seekBar_y.setProgress((int)(zoom_y_temp * 100000));
+                            editText_y.setText(String.format("%.5f", zoom_y_temp));
+                        }
+                    } else if (seekBar == seekBar_y) {
+                        zoom_y_temp = newZoom;
+                        editText_y.setText(String.format("%.5f", zoom_y_temp));
+                        if (checkBoxLockRatio.isChecked()) {
+                            zoom_x_temp = zoom_y_temp;
+                            if (!allow_picture_over_layout && zoom_x_temp > absoluteMaxZoomX) {
+                                zoom_x_temp = absoluteMaxZoomX;
+                            } else if (allow_picture_over_layout && zoom_x_temp > absoluteMaxZoomX) {
+                                zoom_x_temp = absoluteMaxZoomX;
+                            }
+                            seekBar_x.setProgress((int)(zoom_x_temp * 100000));
+                            editText_x.setText(String.format("%.5f", zoom_x_temp));
+                        }
+                    }
+                    WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit, touch_and_move, allow_picture_over_layout, zoom_x_temp, zoom_y_temp, picture_degree, position_x, position_y);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        };
+
+        seekBar_x.setOnSeekBarChangeListener(seekBarChangeListener);
+        seekBar_y.setOnSeekBarChangeListener(seekBarChangeListener);
+
+        TextView.OnEditorActionListener editorActionListener = (v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_UNSPECIFIED) {
+                try {
+                    String input = v.getText().toString().trim();
+                    if (!input.isEmpty()) {
+                        float inputVal = Float.parseFloat(input);
+                        float minZoom = 0.1f;
+                        if (inputVal < minZoom) inputVal = minZoom;
+
+                        // Check against specific limits
+                        float currentMax = (v == editText_x) ? absoluteMaxZoomX : absoluteMaxZoomY;
+                        if (inputVal > currentMax) inputVal = currentMax;
+
+                        v.setText(String.format("%.5f", inputVal));
+
+                        if (v == editText_x) {
+                            zoom_x_temp = inputVal;
+                            seekBar_x.setProgress((int) (zoom_x_temp * 100000));
+
+                            if (checkBoxLockRatio.isChecked()) {
+                                zoom_y_temp = zoom_x_temp;
+                                if (zoom_y_temp > absoluteMaxZoomY) zoom_y_temp = absoluteMaxZoomY;
+                                editText_y.setText(String.format("%.5f", zoom_y_temp));
+                                seekBar_y.setProgress((int) (zoom_y_temp * 100000));
+                            }
+                        } else if (v == editText_y) {
+                            zoom_y_temp = inputVal;
+                            seekBar_y.setProgress((int) (zoom_y_temp * 100000));
+
+                            if (checkBoxLockRatio.isChecked()) {
+                                zoom_x_temp = zoom_y_temp;
+                                if (zoom_x_temp > absoluteMaxZoomX) zoom_x_temp = absoluteMaxZoomX;
+                                editText_x.setText(String.format("%.5f", zoom_x_temp));
+                                seekBar_x.setProgress((int) (zoom_x_temp * 100000));
+                            }
+                        }
+
+                        WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit,
+                                touch_and_move, allow_picture_over_layout, zoom_x_temp, zoom_y_temp, picture_degree,
+                                position_x, position_y);
+
+                        InputMethodManager imm = (InputMethodManager) requireContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                        if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                        v.clearFocus();
+                        return true;
+                    }
+                } catch (NumberFormatException e) {
+                    Toast.makeText(getActivity(), R.string.settings_picture_size_warn, Toast.LENGTH_SHORT).show();
+                }
+            }
+            return false;
+        };
+
+        editText_x.setOnEditorActionListener(editorActionListener);
+        editText_y.setOnEditorActionListener(editorActionListener);
+
+        dialog.setPositiveButton(R.string.done, (__, which) -> {
+            // 【新增/修改】：在保存前，强制从 EditText 获取最新值
+            try {
+                String inputX = editText_x.getText().toString().trim();
+                String inputY = editText_y.getText().toString().trim();
+                if (!inputX.isEmpty()) zoom_x_temp = Float.parseFloat(inputX);
+                if (!inputY.isEmpty()) zoom_y_temp = Float.parseFloat(inputY);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            zoom_x = zoom_x_temp;
+            zoom_y = zoom_y_temp;
+            onSuccessEditPicture(floatImageView_Edit, bitmap_Edit);
+        });
+
+        dialog.setNegativeButton(R.string.cancel, (__, which) -> onFailedEditPicture(floatImageView_Edit, bitmap_Edit));
+        dialog.setView(mView);
+        AlertDialog alertDialog = dialog.create();
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            alertDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+        } else {
+            alertDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
+        }
+        currentDialog = alertDialog;
+        currentDialog.show();
+    }
+
+    private void setPictureDegree() {
+        syncPositionFromView();
+        bitmap_Edit = ImageMethods.getEditBitmap(getActivity(), bitmap);
+        floatImageView_Edit = ImageMethods.createPictureView(getActivity(), bitmap_Edit, touch_and_move, allow_picture_over_layout, zoom_x, zoom_y, picture_degree);
+        onEditPicture(floatImageView_Edit, true, touch_and_move);
+
+        View mView = inflater.inflate(R.layout.dialog_set_size, requireActivity().findViewById(R.id.layout_dialog_set_size));
+        AlertDialog.Builder dialog = new AlertDialog.Builder(requireContext());
+        dialog.setTitle(R.string.settings_picture_degree);
+        dialog.setCancelable(false);
+        TextView name = mView.findViewById(R.id.textview_set_size);
+        name.setText(R.string.degree);
+        final SeekBar seekBar = mView.findViewById(R.id.seekbar_set_size);
+        seekBar.setMax(8);
+        seekBar.setProgress((int) (picture_degree / 45));
+        final EditText editText = mView.findViewById(R.id.edittext_set_size);
+        editText.setText(String.valueOf((int) picture_degree));
+        picture_degree_temp = picture_degree;
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser) {
+                    // 核心修改：每个进度代表 45 度
+                    picture_degree_temp = progress * 45;
+
+                    editText.setText(String.valueOf((int) picture_degree_temp));
+
+                    WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit,
+                            touch_and_move, allow_picture_over_layout, zoom_x, zoom_y,
+                            picture_degree_temp, position_x, position_y);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+        // A. 处理软键盘上的 Done 或 实体键盘的回车
+        editText.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_UNSPECIFIED) {
+                applyRotationInput(editText, seekBar);
+
+                // 收起键盘并清除焦点
+                InputMethodManager imm = (InputMethodManager) requireContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                v.clearFocus();
+                return true;
+            }
+            return false;
+        });
+
+        // B. 处理点击界面其他地方 (比如对话框的确定按钮)
+        editText.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus) {
+                // 只要焦点一离开输入框，立刻应用数字
+                applyRotationInput(editText, seekBar);
+            }
+        });
+        dialog.setPositiveButton(R.string.done, (__, which) -> {
+            // 【新增】：确保点击确定时，最后一次手动输入的数字被应用
+            applyRotationInput(editText, seekBar);
+            picture_degree = picture_degree_temp;
+            onSuccessEditPicture(floatImageView_Edit, bitmap_Edit);
+        });
+        dialog.setNegativeButton(R.string.cancel, (__, which) -> onFailedEditPicture(floatImageView_Edit, bitmap_Edit));
+        dialog.setView(mView);
+        AlertDialog alertDialog = dialog.create();
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            alertDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+        } else {
+            alertDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
+        }
+        currentDialog = alertDialog;
+        currentDialog.show();
+    }
+    private void applyRotationInput(EditText v, SeekBar seekBar) {
+        try {
+            String input;
+            input = v.getText().toString().trim();
+            if (input.isEmpty()) return;
+            float inputVal = Float.parseFloat(input);
+
+            if (inputVal < 0) inputVal = 0;
+            if (inputVal > 360) inputVal = 360;
+
+            picture_degree_temp = inputVal;
+            int nearestProgress = Math.round(inputVal / 45f);
+            seekBar.setProgress(nearestProgress);
+
+            // 确保文字显示用户输入的精确值
+            v.setText(String.valueOf((int)inputVal));
+
+            WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit,
+                    touch_and_move, allow_picture_over_layout, zoom_x, zoom_y,
+                    picture_degree_temp, position_x, position_y);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    private void setPictureAlpha() {
+        syncPositionFromView();
+        View mView = inflater.inflate(R.layout.dialog_set_size, requireActivity().findViewById(R.id.layout_dialog_set_size));
+        AlertDialog.Builder dialog = new AlertDialog.Builder(requireContext());
+        dialog.setTitle(R.string.settings_picture_alpha);
+        dialog.setCancelable(false);
+        TextView name = mView.findViewById(R.id.textview_set_size);
+        name.setText(R.string.transparency);
+        final SeekBar seekBar = mView.findViewById(R.id.seekbar_set_size);
+        seekBar.setMax(100);
+        seekBar.setProgress((int) (picture_alpha * 100));
+        final EditText editText = mView.findViewById(R.id.edittext_set_size);
+        editText.setText(String.valueOf(picture_alpha));
+        picture_alpha_temp = picture_alpha;
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                picture_alpha_temp = ((float) progress) / 100;
+                editText.setText(String.valueOf(picture_alpha_temp));
+                floatImageView.setAlpha(picture_alpha_temp);
+                WindowsMethods.updateWindow(windowManager, floatImageView, touch_and_move, allow_picture_over_layout, position_x, position_y);
+                syncPositionToView(floatImageView, position_x, position_y);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+        editText.setOnEditorActionListener((v, actionId, event) -> {
+            float edittext_temp = Float.parseFloat(v.getText().toString());
+            if (edittext_temp >= 0 && edittext_temp <= 100) {
+                picture_alpha_temp = edittext_temp;
+                seekBar.setProgress((int) (picture_alpha_temp * 100));
+                floatImageView.setAlpha(picture_alpha_temp);
+                WindowsMethods.updateWindow(windowManager, floatImageView, touch_and_move, allow_picture_over_layout, position_x, position_y);
+                syncPositionToView(floatImageView, position_x, position_y);
+            } else {
+                Toast.makeText(getActivity(), R.string.settings_number_warn, Toast.LENGTH_SHORT).show();
+            }
+            return false;
+        });
+        dialog.setPositiveButton(R.string.done, (__, which) -> {
+            // 【新增】：手动从输入框提取一次
+            try {
+                String input = editText.getText().toString().trim();
+                if (!input.isEmpty()) {
+                    picture_alpha_temp = Float.parseFloat(input);
+                }
+            } catch (Exception e) { }
+
+            picture_alpha = picture_alpha_temp;
+            floatImageView.setAlpha(picture_alpha);
+            WindowsMethods.updateWindow(windowManager, floatImageView, touch_and_move, allow_picture_over_layout, position_x, position_y);
+            syncPositionToView(floatImageView, position_x, position_y);
+        });
+        dialog.setNegativeButton(R.string.cancel, (__, which) -> {
+            floatImageView.setAlpha(picture_alpha);
+            WindowsMethods.updateWindow(windowManager, floatImageView, touch_and_move, allow_picture_over_layout, position_x, position_y);
+            syncPositionToView(floatImageView, position_x, position_y);
+        });
+        dialog.setView(mView);
+        AlertDialog alertDialog = dialog.create();
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            alertDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+        } else {
+            alertDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
+        }
+        currentDialog = alertDialog;
+        currentDialog.show();
+    }
+
+    private void syncPositionFromView() {
+        if (floatImageView != null && touch_and_move) {
+            position_x = (int) floatImageView.getMovedPositionX();
+            position_y = (int) floatImageView.getMovedPositionY();
+        }
+    }
+
+    private void syncPositionToView(FloatImageView view, int x, int y) {
+        if (view != null) {
+            view.setWindowPosition(x, y);
+        }
+    }
+
+    private void setPicturePosition() {
+        syncPositionFromView();
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext());
+        final boolean touchable_edit = (touch_and_move || sharedPreferences.getBoolean(Config.PREFERENCE_TOUCHABLE_POSITION_EDIT, false));
+        bitmap_Edit = ImageMethods.getEditBitmap(getActivity(), bitmap);
+        floatImageView_Edit = ImageMethods.createPictureView(getActivity(), bitmap_Edit, touchable_edit, allow_picture_over_layout, zoom_x, zoom_y, picture_degree);
+        onEditPicture(floatImageView_Edit, false, touchable_edit);
+        if (touchable_edit) {
+            WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit, true, allow_picture_over_layout, zoom_x, zoom_y, picture_degree, position_x, position_y);
+        }
+
+        View mView = inflater.inflate(R.layout.dialog_set_position, requireActivity().findViewById(R.id.layout_dialog_set_position));
+        AlertDialog.Builder dialog = new AlertDialog.Builder(requireContext());
+        dialog.setTitle(R.string.settings_picture_position);
+        dialog.setCancelable(false);
+        Point size = new Point();
+        requireActivity().getWindowManager().getDefaultDisplay().getSize(size);
+        final int Max_X = size.x;
+        final int Max_Y = size.y;
+        final int min_X = allow_picture_over_layout ? -Max_X : 0;
+        final int min_Y = allow_picture_over_layout ? -Max_Y : 0;
+        final SeekBar seekBar_x = mView.findViewById(R.id.seekbar_set_position_x);
+        seekBar_x.setMax(Max_X - min_X);
+        seekBar_x.setProgress(position_x - min_X);
+        final EditText editText_x = mView.findViewById(R.id.edittext_set_position_x);
+        editText_x.setText(String.valueOf(position_x));
+        final SeekBar seekBar_y = mView.findViewById(R.id.seekbar_set_position_y);
+        seekBar_y.setMax(Max_Y - min_Y);
+        seekBar_y.setProgress(position_y - min_Y);
+        final EditText editText_y = mView.findViewById(R.id.edittext_set_position_y);
+        editText_y.setText(String.valueOf(position_y));
+        if (allow_picture_over_layout) {
+            editText_x.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED);
+            editText_y.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        }
+        position_x_temp = position_x;
+        position_y_temp = position_y;
+        seekBar_x.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                position_x_temp = progress + min_X;
+                editText_x.setText(String.valueOf(position_x_temp));
+                WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit, touchable_edit, allow_picture_over_layout, zoom_x, zoom_y, picture_degree, position_x_temp, position_y_temp);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+        editText_x.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_DONE ||
+                    actionId == EditorInfo.IME_ACTION_UNSPECIFIED ||
+                    actionId == EditorInfo.IME_ACTION_NEXT) {
+                try {
+                    String input = v.getText().toString();
+                    if (!input.isEmpty()) {
+                        int edittext_temp = (int) Float.parseFloat(input);
+
+                        // 2. 边界逻辑（使用你之前计算好的 Max_X）
+                        if (allow_picture_over_layout || (edittext_temp >= 0 && edittext_temp <= Max_X)) {
+                            position_x_temp = edittext_temp;
+                            if (edittext_temp >= min_X && edittext_temp <= Max_X) {
+                                seekBar_x.setProgress(edittext_temp - min_X);
+                            }
+                            // 更新窗口
+                            Toast.makeText(getActivity(), "正在更新坐标到: " + position_x_temp, Toast.LENGTH_SHORT).show();
+                            WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit, touchable_edit, allow_picture_over_layout, zoom_x, zoom_y, picture_degree, position_x_temp, position_y_temp);
+
+                            // 3. 隐藏键盘逻辑
+                            InputMethodManager imm = (InputMethodManager) getActivity().getSystemService(Context.INPUT_METHOD_SERVICE);
+                            if (imm != null) {
+                                imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                            }
+                            v.clearFocus();
+                            return true; // 成功处理，返回 true
+                        } else {
+                            Toast.makeText(getActivity(), R.string.settings_picture_position_warn, Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+            return false;
+        });
+        seekBar_y.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                position_y_temp = progress + min_Y;
+                editText_y.setText(String.valueOf(position_y_temp));
+                WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit, touchable_edit, allow_picture_over_layout, zoom_x, zoom_y, picture_degree, position_x_temp, position_y_temp);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+        editText_y.setOnEditorActionListener((v, actionId, event) -> {
+            try {
+                String input = v.getText().toString();
+                if (!input.isEmpty()) {
+                    // 使用 Float 转换防止输入小数点时崩溃
+                    int edittext_temp = (int) Float.parseFloat(input);
+
+                    if (allow_picture_over_layout || (edittext_temp >= 0 && edittext_temp <= Max_Y)) {
+                        position_y_temp = edittext_temp;
+                        if (edittext_temp >= min_Y && edittext_temp <= Max_Y) {
+                            seekBar_y.setProgress(edittext_temp - min_Y);
+                        }
+                        // 执行窗口更新
+                        WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit, touchable_edit,
+                                allow_picture_over_layout, zoom_x, zoom_y, picture_degree, position_x_temp, position_y_temp);
+
+                        // 移除焦点，这样用户知道已经输入成功了
+                        v.clearFocus();
+                        return true; // 修改这里：返回 true 确保动作被执行
+                    } else {
+                        Toast.makeText(getActivity(), R.string.settings_picture_position_warn, Toast.LENGTH_SHORT).show();
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return false;
+        });
+
+// 2. 增加失去焦点监听 (针对模拟器没有软键盘的情况)
+        editText_y.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus) { // 当鼠标点击其他地方，输入框失去焦点时，自动应用数字
+                try {
+                    String input = editText_y.getText().toString();
+                    if (!input.isEmpty()) {
+                        int val = (int) Float.parseFloat(input);
+                        // 简单的边界纠正
+                        if (!allow_picture_over_layout) {
+                            val = Math.max(0, Math.min(val, Max_Y));
+                        }
+                        position_y_temp = val;
+
+                        WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit, touchable_edit,
+                                allow_picture_over_layout, zoom_x, zoom_y, picture_degree, position_x_temp, position_y_temp);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+        if (allow_picture_over_layout) {
+
+        }
+        if (touchable_edit) {
+            dialog.setNeutralButton(R.string.save_moved_position, (dialog1, which) -> {
+                position_x = (int) floatImageView_Edit.getMovedPositionX();
+                position_y = (int) floatImageView_Edit.getMovedPositionY();
+                onSuccessEditPicture(floatImageView_Edit, bitmap_Edit);
+            });
+        }
+        dialog.setPositiveButton(R.string.done, (__, which) -> {
+            // 【核心修复】：在点击“确定”时，强制从 EditText 中重新抓取一次数值
+            try {
+                String inputX = editText_x.getText().toString().trim();
+                String inputY = editText_y.getText().toString().trim();
+
+                if (!inputX.isEmpty()) {
+                    position_x_temp = (int) Float.parseFloat(inputX);
+                }
+                if (!inputY.isEmpty()) {
+                    position_y_temp = (int) Float.parseFloat(inputY);
+                }
+            } catch (Exception e) {
+                // 如果输入了非法字符，则回退到最后一次有效的 temp 值
+                e.printStackTrace();
+            }
+
+            // 接下来再进行最终赋值
+            if (allow_picture_over_layout) {
+                // 在允许超出边界的情况下，直接使用抓取到的值
+                position_x = position_x_temp;
+                position_y = position_y_temp;
+            } else {
+                // 如果不允许超出边界，可以加一个简单的范围限制（兜底）
+                position_x = Math.max(0, Math.min(position_x_temp, Max_X));
+                position_y = Math.max(0, Math.min(position_y_temp, Max_Y));
+            }
+
+            onSuccessEditPicture(floatImageView_Edit, bitmap_Edit);
+        });
+        dialog.setNegativeButton(R.string.cancel, (__, which) -> onFailedEditPicture(floatImageView_Edit, bitmap_Edit));
+        dialog.setView(mView);
+        AlertDialog alertDialog = dialog.create();
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            alertDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+        } else {
+            alertDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
+        }
+        currentDialog = alertDialog;
+        currentDialog.show();
+    }
+
+    private void onEditPicture(FloatImageView FloatImageView_Edit, boolean applyOffset, boolean touchable) {
+        if (!onUseEditPicture) {
+            windowManager.removeView(floatImageView);
+            floatImageView.refreshDrawableState();
+            int adjustedY = position_y;
+            if (applyOffset) {
+                int editDialogHeight = getResources().getDimensionPixelSize(R.dimen.dialog_set_resize_height);
+                adjustedY = position_y + editDialogHeight + 20 ;
+            }
+            WindowsMethods.createWindow(windowManager, FloatImageView_Edit, touchable, allow_picture_over_layout, position_x, adjustedY);
+            syncPositionToView(FloatImageView_Edit, position_x, adjustedY);
+            onUseEditPicture = true;
+        }
+    }
+
+    private void onSuccessEditPicture(FloatImageView floatImageView_Edit, Bitmap bitmap_Edit) {
+        if (onUseEditPicture) {
+            windowManager.removeView(floatImageView_Edit);
+            floatImageView_Edit.refreshDrawableState();
+            bitmap_Edit.recycle();
+            floatImageView.setImageBitmap(ImageMethods.resizeBitmap(bitmap, zoom_x, zoom_y, picture_degree));
+            WindowsMethods.createWindow(windowManager, floatImageView, touch_and_move, allow_picture_over_layout, position_x, position_y);
+            syncPositionToView(floatImageView, position_x, position_y);
+            onUseEditPicture = false;
+        }
+    }
+
+    private void onFailedEditPicture(FloatImageView floatImageView_Edit, Bitmap bitmap_Edit) {
+        if (onUseEditPicture) {
+            windowManager.removeView(floatImageView_Edit);
+            floatImageView_Edit.refreshDrawableState();
+            bitmap_Edit.recycle();
+            WindowsMethods.createWindow(windowManager, floatImageView, touch_and_move, allow_picture_over_layout, position_x, position_y);
+            syncPositionToView(floatImageView, position_x, position_y);
+            onUseEditPicture = false;
+        }
+    }
+
+    public void saveAllData() {
+        pictureData.put(Config.DATA_PICTURE_SHOW_ENABLED, true);
+        pictureData.put(Config.DATA_PICTURE_ZOOM, zoom_x); // Backward compatibility: store X as main ZOOM? Or just ignore ZOOM? Let's update ZOOM to match X.
+        pictureData.put(Config.DATA_PICTURE_ZOOM_X, zoom_x);
+        pictureData.put(Config.DATA_PICTURE_ZOOM_Y, zoom_y);
+        pictureData.put(Config.DATA_PICTURE_DEFAULT_ZOOM, default_zoom);
+        pictureData.put(Config.DATA_PICTURE_ALPHA, picture_alpha);
+        if (touch_and_move) {
+            position_x = (int) floatImageView.getMovedPositionX();
+            position_y = (int) floatImageView.getMovedPositionY();
+        }
+        pictureData.put(Config.DATA_PICTURE_POSITION_X, position_x);
+        pictureData.put(Config.DATA_PICTURE_POSITION_Y, position_y);
+        pictureData.put(Config.DATA_PICTURE_DEGREE, picture_degree);
+        pictureData.put(Config.DATA_PICTURE_TOUCH_AND_MOVE, false);
+        pictureData.put(Config.DATA_ALLOW_PICTURE_OVER_LAYOUT, allow_picture_over_layout);
+        pictureData.commit(PictureName);
+        boolean global_touchable = PreferenceManager.getDefaultSharedPreferences(requireContext()).getBoolean(Config.PREFERENCE_TOUCHABLE_POSITION_EDIT, false);
+        WindowsMethods.updateWindow(windowManager, floatImageView, bitmap, global_touchable, allow_picture_over_layout, zoom_x, zoom_y, picture_degree, position_x, position_y);
+        syncPositionToView(floatImageView, position_x, position_y);
+        ImageMethods.saveFloatImageViewById(requireActivity(), PictureId, floatImageView);
+    }
+
+    public void clearEditView() {
+        if (onUseEditPicture) {
+            if (floatImageView_Edit != null && bitmap_Edit != null) {
+                onFailedEditPicture(floatImageView_Edit, bitmap_Edit);
+            }
+        }
+    }
+
+    public void exit() {
+        if (!Edit_Mode) {
+            if (floatImageView != null) {
+                windowManager.removeView(floatImageView);
+                bitmap.recycle();
+                floatImageView = null;
+            }
+            ImageMethods.clearAllTemp(requireActivity(), PictureId);
+        } else {
+            float original_zoom = pictureData.getFloat(Config.DATA_PICTURE_ZOOM, zoom_x);
+            float original_zoom_x = pictureData.getFloat(Config.DATA_PICTURE_ZOOM_X, original_zoom);
+            float original_zoom_y = pictureData.getFloat(Config.DATA_PICTURE_ZOOM_Y, original_zoom);
+
+            float original_alpha = pictureData.getFloat(Config.DATA_PICTURE_ALPHA, picture_alpha);
+            float original_degree = pictureData.getFloat(Config.DATA_PICTURE_DEGREE, picture_degree);
+            int original_position_x = pictureData.getInt(Config.DATA_PICTURE_POSITION_X, position_x);
+            int original_position_y = pictureData.getInt(Config.DATA_PICTURE_POSITION_Y, position_y);
+            boolean original_allow_picture_over_layout = pictureData.getBoolean(Config.DATA_ALLOW_PICTURE_OVER_LAYOUT, allow_picture_over_layout);
+            boolean original_touch_and_move = pictureData.getBoolean(Config.DATA_PICTURE_TOUCH_AND_MOVE, Config.DATA_DEFAULT_PICTURE_TOUCH_AND_MOVE);
+            boolean global_touchable = PreferenceManager.getDefaultSharedPreferences(requireContext()).getBoolean(Config.PREFERENCE_TOUCHABLE_POSITION_EDIT, false);
+            floatImageView.setAlpha(original_alpha);
+            floatImageView.setOverLayout(original_allow_picture_over_layout);
+            floatImageView.setMoveable(original_touch_and_move || global_touchable);
+            WindowsMethods.updateWindow(windowManager, floatImageView, bitmap, original_touch_and_move || global_touchable, original_allow_picture_over_layout, original_zoom_x, original_zoom_y, original_degree, original_position_x, original_position_y);
+            syncPositionToView(floatImageView, original_position_x, original_position_y);
+        }
+
+    }
+
+}
