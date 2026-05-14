@@ -83,4 +83,6 @@
     <string name="settings_allow_picture_over_layout_sum">Show picture out of current window</string>
     <string name="settings_picture_size_warn">Invalid zoom scale, please enter a valid number</string>
     <string name="picture_size_adjusted_to_fit_screen">Picture size has been adjusted to fit the screen.</string>
+    <string name="action_confirm_delete_hint">Confirm delete this picture?</string>
+    <string name="action_confirm_delete">CONFIRM DELETE</string>
 </resources>

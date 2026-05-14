@@ -83,4 +83,6 @@
     <string name="settings_allow_picture_over_layout">允许悬浮窗超出屏幕</string>
     <string name="settings_allow_picture_over_layout_sum">悬浮窗可以超出当前可显示的屏幕外</string>
     <string name="settings_picture_size_warn">请输入有效的缩放比例（例如 0.1 到 5.0）</string>
+    <string name="action_confirm_delete_hint">确认删除这张图片吗？</string>
+    <string name="action_confirm_delete">确认删除</string>
 </resources>

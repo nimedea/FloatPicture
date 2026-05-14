@@ -2,12 +2,15 @@ package tool.xfy9326.floatpicture.View;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Color;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.SwitchCompat;
+
+import com.google.android.material.snackbar.Snackbar;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -84,16 +87,26 @@ public class ManageListAdapter extends AdvancedRecyclerView.Adapter<ManageListVi
         });
 
         holder.button_Picture_Delete.setOnClickListener(v -> {
-            ManageMethods.DeleteWin(mActivity, mPictureId);
-            updateData();
-            holder.switch_Picture_Show.setOnCheckedChangeListener(null);
-            holder.button_Picture_Edit.setOnClickListener(null);
-            holder.button_Picture_Delete.setOnClickListener(null);
-            int position1 = holder.getAdapterPosition();
-            notifyItemRemoved(position1);
-            notifyItemRangeChanged(position1, getItemCount() - position1);
-            MainActivity.SnackShow(mActivity, R.string.action_delete_window);
-            ManageMethods.updateNotificationCount(mActivity);
+            View coordinatorLayout = mActivity.findViewById(R.id.main_layout_content);
+            if (coordinatorLayout != null) {
+                Snackbar snackbar = Snackbar.make(coordinatorLayout, R.string.action_confirm_delete_hint, Snackbar.LENGTH_LONG);
+                snackbar.setAction(R.string.action_confirm_delete, view -> {
+                    ManageMethods.DeleteWin(mActivity, mPictureId);
+                    updateData();
+                    holder.switch_Picture_Show.setOnCheckedChangeListener(null);
+                    holder.button_Picture_Edit.setOnClickListener(null);
+                    holder.button_Picture_Delete.setOnClickListener(null);
+                    int position1 = holder.getAdapterPosition();
+                    if (position1 != -1) {
+                        notifyItemRemoved(position1);
+                        notifyItemRangeChanged(position1, getItemCount() - position1);
+                    }
+                    MainActivity.SnackShow(mActivity, R.string.action_delete_window);
+                    ManageMethods.updateNotificationCount(mActivity);
+                });
+                snackbar.setActionTextColor(Color.RED);
+                snackbar.show();
+            }
         });
     }
 
