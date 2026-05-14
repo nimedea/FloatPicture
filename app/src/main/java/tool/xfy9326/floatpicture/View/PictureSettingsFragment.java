@@ -94,7 +94,8 @@ public class PictureSettingsFragment extends PreferenceFragmentCompat {
 
         restoreData(savedInstanceState);
         setMode();
-        PreferenceSet();
+        // PreferenceSet() will be called inside setMode's thread completion or here.
+        // But setMode runs a thread. We should ensure PreferenceSet handles the initial summary.
     }
 
     public void onConfigurationChanged(@NonNull android.content.res.Configuration newConfig) {
@@ -193,7 +194,10 @@ public class PictureSettingsFragment extends PreferenceFragmentCompat {
                     floatImageView.setAlpha(picture_alpha);
                     floatImageView.setPictureId(PictureId);
                 }
-                alertDialog.cancel();
+                requireActivity().runOnUiThread(() -> {
+                    alertDialog.cancel();
+                    PreferenceSet();
+                });
             }
         }).start();
     }
@@ -204,8 +208,10 @@ public class PictureSettingsFragment extends PreferenceFragmentCompat {
     }
 
     private void PreferenceSet() {
-        requirePreference(Config.PREFERENCE_PICTURE_NAME).setOnPreferenceClickListener(preference -> {
-            setPictureName();
+        Preference namePref = requirePreference(Config.PREFERENCE_PICTURE_NAME);
+        namePref.setSummary(PictureName);
+        namePref.setOnPreferenceClickListener(preference -> {
+            setPictureName(preference);
             return true;
         });
         requirePreference(Config.PREFERENCE_PICTURE_RESIZE).setOnPreferenceClickListener(preference -> {
@@ -282,7 +288,7 @@ public class PictureSettingsFragment extends PreferenceFragmentCompat {
         alertDialog.show();
     }
 
-    private void setPictureName() {
+    private void setPictureName(Preference preference) {
         View mView = inflater.inflate(R.layout.dialog_edit_text, requireActivity().findViewById(R.id.layout_dialog_edit_text));
         AlertDialog.Builder dialog = new AlertDialog.Builder(requireContext());
         dialog.setTitle(R.string.settings_picture_name);
@@ -293,6 +299,7 @@ public class PictureSettingsFragment extends PreferenceFragmentCompat {
                 Toast.makeText(getActivity(), R.string.settings_picture_name_warn, Toast.LENGTH_SHORT).show();
             } else {
                 PictureName = editText.getText().toString();
+                preference.setSummary(PictureName);
             }
         });
         dialog.setNegativeButton(R.string.cancel, (dialog1, which) -> {
