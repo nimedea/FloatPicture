@@ -2,8 +2,11 @@ package tool.xfy9326.floatpicture.View;
 
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -23,14 +26,13 @@ import tool.xfy9326.floatpicture.R;
 import tool.xfy9326.floatpicture.Utils.Config;
 
 public class GlobalSettingsFragment extends PreferenceFragmentCompat {
-    private LayoutInflater inflater;
     private SharedPreferences sharedPreferences;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        inflater = LayoutInflater.from(requireActivity());
+        // 必须在 super 之前初始化，防止 onCreatePreferences 调用时为空
         sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext());
+        super.onCreate(savedInstanceState);
     }
 
     @Override
@@ -45,14 +47,102 @@ public class GlobalSettingsFragment extends PreferenceFragmentCompat {
     }
 
     private void PreferenceSet() {
-        requirePreference(Config.PREFERENCE_NEW_PICTURE_QUALITY).setOnPreferenceClickListener(preference -> {
-            PictureQualitySet();
+        // 容错处理：如果调用此方法时 sharedPreferences 仍为空（虽然 onCreate 已处理）
+        if (sharedPreferences == null) {
+            sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext());
+        }
+
+        Preference qualityPref = requirePreference(Config.PREFERENCE_NEW_PICTURE_QUALITY);
+        int currentVal = sharedPreferences.getInt(Config.PREFERENCE_NEW_PICTURE_QUALITY, 80);
+        qualityPref.setSummary(currentVal + "%");
+
+        qualityPref.setOnPreferenceClickListener(preference -> {
+            PictureQualitySet(preference);
             return true;
         });
+        
         requirePreference(Config.PREFERENCE_SHOW_NOTIFICATION_CONTROL).setOnPreferenceChangeListener((preference, newValue) -> {
             Toast.makeText(getActivity(), R.string.restart_to_apply_changes, Toast.LENGTH_SHORT).show();
             return true;
         });
+    }
+
+    private void PictureQualitySet(Preference preference) {
+        int picture_size = sharedPreferences.getInt(Config.PREFERENCE_NEW_PICTURE_QUALITY, 80);
+        View mView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_set_size, null);
+        AlertDialog.Builder builder = new AlertDialog.Builder(requireActivity());
+        builder.setTitle(R.string.settings_global_picture_quality);
+        
+        TextView name = mView.findViewById(R.id.textview_set_size);
+        name.setText(R.string.settings_global_picture_quality_quality);
+        
+        final SeekBar seekBar = mView.findViewById(R.id.seekbar_set_size);
+        final EditText editText = mView.findViewById(R.id.edittext_set_size);
+        
+        seekBar.setMax(100);
+        seekBar.setProgress(picture_size);
+        editText.setText(String.valueOf(picture_size));
+
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser) editText.setText(String.valueOf(progress));
+            }
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+
+        editText.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                try {
+                    String str = s.toString();
+                    if (!str.isEmpty()) {
+                        int val = Integer.parseInt(str);
+                        if (val >= 0 && val <= 100) seekBar.setProgress(val);
+                    }
+                } catch (Exception ignored) {}
+            }
+        });
+
+        builder.setView(mView);
+        AlertDialog dialog = builder.create();
+
+        Runnable saveAction = () -> {
+            try {
+                String input = editText.getText().toString();
+                int quality = Integer.parseInt(input);
+                if (quality >= 1 && quality <= 100) {
+                    sharedPreferences.edit().putInt(Config.PREFERENCE_NEW_PICTURE_QUALITY, quality).apply();
+                    preference.setSummary(quality + "%");
+                    dialog.dismiss();
+                    Toast.makeText(getContext(), R.string.done, Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(getActivity(), R.string.settings_global_picture_quality_warn, Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                Toast.makeText(getActivity(), R.string.settings_global_picture_quality_warn, Toast.LENGTH_SHORT).show();
+            }
+        };
+
+        editText.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                saveAction.run();
+                return true;
+            }
+            return false;
+        });
+
+        dialog.setButton(AlertDialog.BUTTON_POSITIVE, getString(R.string.done), (__, ___) -> saveAction.run());
+        dialog.setButton(AlertDialog.BUTTON_NEGATIVE, getString(R.string.cancel), (__, ___) -> {});
+        
+        dialog.show();
     }
 
     @Override
@@ -66,55 +156,5 @@ public class GlobalSettingsFragment extends PreferenceFragmentCompat {
         super.onPause();
         boolean global_touchable = sharedPreferences.getBoolean(Config.PREFERENCE_TOUCHABLE_POSITION_EDIT, false);
         ManageMethods.updateAllWindowsMovability(requireActivity(), global_touchable);
-    }
-
-    private void PictureQualitySet() {
-        int picture_size = sharedPreferences.getInt(Config.PREFERENCE_NEW_PICTURE_QUALITY, 80);
-        View mView = inflater.inflate(R.layout.dialog_set_size, requireActivity().findViewById(R.id.layout_dialog_set_size));
-        AlertDialog.Builder dialog = new AlertDialog.Builder(requireActivity());
-        dialog.setTitle(R.string.settings_global_picture_quality);
-        TextView name = mView.findViewById(R.id.textview_set_size);
-        name.setText(R.string.settings_global_picture_quality_quality);
-        final SeekBar seekBar = mView.findViewById(R.id.seekbar_set_size);
-        seekBar.setProgress(picture_size);
-        seekBar.setMax(100);
-        final EditText editText = mView.findViewById(R.id.edittext_set_size);
-        editText.setText(String.valueOf(picture_size));
-        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                editText.setText(String.valueOf(progress));
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-            }
-        });
-        editText.setOnEditorActionListener((v, actionId, event) -> {
-            int edittext_temp = Integer.parseInt(v.getText().toString());
-            if (edittext_temp > 0) {
-                seekBar.setProgress(edittext_temp);
-            } else {
-                Toast.makeText(getActivity(), R.string.settings_global_picture_quality_warn, Toast.LENGTH_SHORT).show();
-            }
-            return false;
-        });
-        dialog.setView(mView);
-        dialog.setPositiveButton(R.string.done, (__, which) -> {
-            int quality = seekBar.getProgress();
-            if (quality > 0) {
-                SharedPreferences.Editor editor = sharedPreferences.edit();
-                editor.putInt(Config.PREFERENCE_NEW_PICTURE_QUALITY, quality);
-                editor.apply();
-            } else {
-                Toast.makeText(getActivity(), R.string.settings_global_picture_quality_warn, Toast.LENGTH_SHORT).show();
-            }
-        });
-        dialog.setNegativeButton(R.string.cancel, null);
-        dialog.show();
     }
 }

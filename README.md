@@ -1,10 +1,14 @@
 # FloatPicture（悬浮图片）
 ----------  
-***安卓图片悬浮窗软件（Floating Image App for Android）
+安卓图片悬浮窗软件（Floating Image App for Android）
 
-***语言支持（Language Support）:  简体中文与英语（Simplified Chinese and English.）
+使用本软件可以在手机屏幕上以悬浮窗的形式显示任意自定义的图片。
 
-使用本软件可以在手机屏幕上显示任意自定义的图片 (不支持GIF动画)
+***图片格式支持（Picture format）：jpg/jpeg、png、webp、bmp、gif（将作为静态图）、HEIC/HEIF。
+
+***语言支持（Language）:  简体中文与英语（Simplified Chinese and English）
+
+
 # 应用功能(Application Function)
 ----------  
 
@@ -36,7 +40,10 @@
 
 **可支持修改图片位置到屏幕尺寸2倍以内的距离。
 
-----------
+### 7.可设置导入时的图片质量(Picture quality)
+
+在首页侧边栏“全局设置”→“通用设置”→“图片质量”，需要在导入图片之前设置好参数，程序初始设置为80%。
+
 #### *注：此版本在XFY9326发布的FloatPicture_1.9.2版本上做了部分优化和修改
 
 *本应用基于GNU 3.0 协议开源*

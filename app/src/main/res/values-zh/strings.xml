@@ -42,13 +42,13 @@
     <string name="settings_global_start_on_boot_sum">开机时自动运行应用</string>
     <string name="application_version">版本：</string>
     <string name="about">关于</string>
-    <string name="author">XFY9326（逸雪飞扬）</string>
-    <string name="website">https://github.com/nimedea/FloatPicture</string>
+    <string name="author">XFY9326(逸雪飞扬)</string>
+    <string name="website">https://github.com/G1NsY/FloatPicture</string>
     <string name="application_author">原作者：</string>
     <string name="application_modified_by">修改者：</string>
-    <string name="modified_author">nimedea</string>
+    <string name="modified_author">G1NsY(RY)</string>
     <string name="open_source_license">开源协议</string>
-    <string name="copyright">版权所有 © 2017 XFY9326\n版权所有 © 2026 nimedea\n保留所有权利</string>
+    <string name="copyright">版权所有 © 2017 XFY9326\n版权所有 © 2026 G1NsY\n保留所有权利</string>
     <string name="imageview_app_icon">应用图标</string>
     <string name="action_warn_manage_list_empty">没有图片正在显示\n点击+按钮新建</string>
     <string name="imageview_collapsing_toolbar_head">收缩状态栏</string>

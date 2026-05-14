@@ -363,14 +363,14 @@ public class PictureSettingsFragment extends PreferenceFragmentCompat {
         // X Axis Controls
         final SeekBar seekBar_x = mView.findViewById(R.id.seekbar_set_size_x);
         final EditText editText_x = mView.findViewById(R.id.edittext_set_size_x);
-        editText_x.setText(String.format("%.5f", zoom_x));
+        editText_x.setText(String.format("%.3f", zoom_x));
         editText_x.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
         editText_x.setImeOptions(EditorInfo.IME_ACTION_DONE);
 
         // Y Axis Controls
         final SeekBar seekBar_y = mView.findViewById(R.id.seekbar_set_size_y);
         final EditText editText_y = mView.findViewById(R.id.edittext_set_size_y);
-        editText_y.setText(String.format("%.5f", zoom_y));
+        editText_y.setText(String.format("%.3f", zoom_y));
         editText_y.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
         editText_y.setImeOptions(EditorInfo.IME_ACTION_DONE);
 
@@ -389,8 +389,8 @@ public class PictureSettingsFragment extends PreferenceFragmentCompat {
                 targetMaxY = safeMax;
             }
 
-            seekBar_x.setMax((int) (targetMaxX * 100000));
-            seekBar_y.setMax((int) (targetMaxY * 100000));
+            seekBar_x.setMax((int) (targetMaxX * 1000));
+            seekBar_y.setMax((int) (targetMaxY * 1000));
 
             boolean changed = false;
             // 检查当前值是否超出新限制
@@ -404,16 +404,16 @@ public class PictureSettingsFragment extends PreferenceFragmentCompat {
             }
 
             if (changed) {
-                seekBar_x.setProgress((int) (zoom_x_temp * 100000));
-                editText_x.setText(String.format("%.5f", zoom_x_temp));
-                seekBar_y.setProgress((int) (zoom_y_temp * 100000));
-                editText_y.setText(String.format("%.5f", zoom_y_temp));
+                seekBar_x.setProgress((int) (zoom_x_temp * 1000));
+                editText_x.setText(String.format("%.3f", zoom_x_temp));
+                seekBar_y.setProgress((int) (zoom_y_temp * 1000));
+                editText_y.setText(String.format("%.3f", zoom_y_temp));
                 WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit, touch_and_move, allow_picture_over_layout, zoom_x_temp, zoom_y_temp, picture_degree, position_x, position_y);
             } else {
                 // 即使值没变，也要更新 Progress 以匹配新的 Max（如果 seekbar 逻辑需要）
                 // 但通常 setMax 会保持 progress 比例或绝对值，这里为了保险重新设置
-                seekBar_x.setProgress((int) (zoom_x_temp * 100000));
-                seekBar_y.setProgress((int) (zoom_y_temp * 100000));
+                seekBar_x.setProgress((int) (zoom_x_temp * 1000));
+                seekBar_y.setProgress((int) (zoom_y_temp * 1000));
             }
         };
 
@@ -430,10 +430,10 @@ public class PictureSettingsFragment extends PreferenceFragmentCompat {
                 if (zoom_y_temp > safeMax) zoom_y_temp = safeMax;
                 zoom_x_temp = zoom_y_temp;
 
-                seekBar_x.setProgress((int) (zoom_x_temp * 100000));
-                editText_x.setText(String.format("%.5f", zoom_x_temp));
-                seekBar_y.setProgress((int) (zoom_y_temp * 100000));
-                editText_y.setText(String.format("%.5f", zoom_y_temp));
+                seekBar_x.setProgress((int) (zoom_x_temp * 1000));
+                editText_x.setText(String.format("%.3f", zoom_x_temp));
+                seekBar_y.setProgress((int) (zoom_y_temp * 1000));
+                editText_y.setText(String.format("%.3f", zoom_y_temp));
 
                 WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit, touch_and_move, allow_picture_over_layout, zoom_x_temp, zoom_y_temp, picture_degree, position_x, position_y);
             }
@@ -443,11 +443,11 @@ public class PictureSettingsFragment extends PreferenceFragmentCompat {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if (fromUser && progress > 0) {
-                    float newZoom = progress / 100000.0f;
+                    float newZoom = progress / 1000.0f;
                     if (seekBar == seekBar_x) {
                         zoom_x_temp = newZoom;
 
-                        editText_x.setText(String.format("%.5f", zoom_x_temp));
+                        editText_x.setText(String.format("%.3f", zoom_x_temp));
                         if (checkBoxLockRatio.isChecked()) {
                             // Link Y to X
                             zoom_y_temp = zoom_x_temp;
@@ -472,12 +472,12 @@ public class PictureSettingsFragment extends PreferenceFragmentCompat {
                                 zoom_y_temp = absoluteMaxZoomY;
                             }
 
-                            seekBar_y.setProgress((int)(zoom_y_temp * 100000));
-                            editText_y.setText(String.format("%.5f", zoom_y_temp));
+                            seekBar_y.setProgress((int)(zoom_y_temp * 1000));
+                            editText_y.setText(String.format("%.3f", zoom_y_temp));
                         }
                     } else if (seekBar == seekBar_y) {
                         zoom_y_temp = newZoom;
-                        editText_y.setText(String.format("%.5f", zoom_y_temp));
+                        editText_y.setText(String.format("%.3f", zoom_y_temp));
                         if (checkBoxLockRatio.isChecked()) {
                             zoom_x_temp = zoom_y_temp;
                             if (!allow_picture_over_layout && zoom_x_temp > absoluteMaxZoomX) {
@@ -485,8 +485,8 @@ public class PictureSettingsFragment extends PreferenceFragmentCompat {
                             } else if (allow_picture_over_layout && zoom_x_temp > absoluteMaxZoomX) {
                                 zoom_x_temp = absoluteMaxZoomX;
                             }
-                            seekBar_x.setProgress((int)(zoom_x_temp * 100000));
-                            editText_x.setText(String.format("%.5f", zoom_x_temp));
+                            seekBar_x.setProgress((int)(zoom_x_temp * 1000));
+                            editText_x.setText(String.format("%.3f", zoom_x_temp));
                         }
                     }
                     WindowsMethods.updateWindow(windowManager, floatImageView_Edit, bitmap_Edit, touch_and_move, allow_picture_over_layout, zoom_x_temp, zoom_y_temp, picture_degree, position_x, position_y);
@@ -518,27 +518,27 @@ public class PictureSettingsFragment extends PreferenceFragmentCompat {
                         float currentMax = (v == editText_x) ? absoluteMaxZoomX : absoluteMaxZoomY;
                         if (inputVal > currentMax) inputVal = currentMax;
 
-                        v.setText(String.format("%.5f", inputVal));
+                        v.setText(String.format("%.3f", inputVal));
 
                         if (v == editText_x) {
                             zoom_x_temp = inputVal;
-                            seekBar_x.setProgress((int) (zoom_x_temp * 100000));
+                            seekBar_x.setProgress((int) (zoom_x_temp * 1000));
 
                             if (checkBoxLockRatio.isChecked()) {
                                 zoom_y_temp = zoom_x_temp;
                                 if (zoom_y_temp > absoluteMaxZoomY) zoom_y_temp = absoluteMaxZoomY;
-                                editText_y.setText(String.format("%.5f", zoom_y_temp));
-                                seekBar_y.setProgress((int) (zoom_y_temp * 100000));
+                                editText_y.setText(String.format("%.3f", zoom_y_temp));
+                                seekBar_y.setProgress((int) (zoom_y_temp * 1000));
                             }
                         } else if (v == editText_y) {
                             zoom_y_temp = inputVal;
-                            seekBar_y.setProgress((int) (zoom_y_temp * 100000));
+                            seekBar_y.setProgress((int) (zoom_y_temp * 1000));
 
                             if (checkBoxLockRatio.isChecked()) {
                                 zoom_x_temp = zoom_y_temp;
                                 if (zoom_x_temp > absoluteMaxZoomX) zoom_x_temp = absoluteMaxZoomX;
-                                editText_x.setText(String.format("%.5f", zoom_x_temp));
-                                seekBar_x.setProgress((int) (zoom_x_temp * 100000));
+                                editText_x.setText(String.format("%.3f", zoom_x_temp));
+                                seekBar_x.setProgress((int) (zoom_x_temp * 1000));
                             }
                         }
 

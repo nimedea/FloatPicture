@@ -10,6 +10,8 @@ import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.WindowManager;
 
+import androidx.preference.PreferenceManager;
+
 import java.io.File;
 import java.util.HashMap;
 
@@ -23,11 +25,15 @@ public class ImageMethods {
         String md5 = CodeMethods.getFileMD5String(activity, uri);
         if (md5 == null) return null;
 
+        // 【修改点】：为了支持导入相同图片，在 ID 后追加时间戳，确保 ID 唯一性
+        String uniqueId = md5 + "_" + System.currentTimeMillis();
+
         Bitmap bitmap = IOMethods.readImageByUri(activity, uri);
         if (bitmap != null) {
-            String path = Config.DEFAULT_PICTURE_DIR + md5;
-            IOMethods.saveBitmap(bitmap, 100, path);
-            return md5;
+            String path = Config.DEFAULT_PICTURE_DIR + uniqueId;
+            int quality = PreferenceManager.getDefaultSharedPreferences(activity).getInt(Config.PREFERENCE_NEW_PICTURE_QUALITY, 80);
+            IOMethods.saveBitmap(bitmap, quality, path);
+            return uniqueId;
         }
         return null;
     }

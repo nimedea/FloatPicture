@@ -34,12 +34,31 @@ public class IOMethods {
     }
 
     @SuppressWarnings("SameParameterValue")
+//    static void saveBitmap(Bitmap bitmap, int quality, String path) {
+//        File file = new File(path);
+//        try {
+//            if (!CheckFile(file, true)) {
+//                try (OutputStream outputStream = new FileOutputStream(file)) {
+//                    // 改用 JPEG，质量调节效果会非常明显
+//                    bitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream);
+//                    outputStream.flush();
+//                }
+//                bitmap.recycle();
+//            }
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//    }
     static void saveBitmap(Bitmap bitmap, int quality, String path) {
         File file = new File(path);
         try {
             if (!CheckFile(file, true)) {
-                OutputStream outputStream = new FileOutputStream(file);
-                bitmap.compress(Bitmap.CompressFormat.WEBP, quality, outputStream);
+                try (OutputStream outputStream = new FileOutputStream(file)) {
+                    // 改回 WEBP 格式以支持透明度
+                    // 注意：WEBP 在质量 40 以下才会有明显的画质下降感
+                    bitmap.compress(Bitmap.CompressFormat.WEBP, quality, outputStream);
+                    outputStream.flush();
+                }
                 bitmap.recycle();
             }
         } catch (IOException e) {
@@ -110,15 +129,13 @@ public class IOMethods {
 
     public static boolean writeFile(String content, String path) {
         File file = new File(path);
-        try {
+        try (OutputStream writer = new FileOutputStream(file)) {
             if (CheckFile(file, false)) {
                 return false;
             }
-            OutputStream writer = new FileOutputStream(file);
             byte[] Bytes = content.getBytes();
             writer.write(Bytes);
             writer.flush();
-            writer.close();
             return true;
         } catch (IOException e) {
             e.printStackTrace();
@@ -132,16 +149,15 @@ public class IOMethods {
             if (CheckFile(file, false)) {
                 return null;
             }
-            InputStream file_stream = new FileInputStream(file);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(file_stream));
-            String line;
-            StringBuilder result = new StringBuilder();
-            while ((line = reader.readLine()) != null) {
-                result.append(line).append("\n");
+            try (InputStream file_stream = new FileInputStream(file);
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(file_stream))) {
+                String line;
+                StringBuilder result = new StringBuilder();
+                while ((line = reader.readLine()) != null) {
+                    result.append(line).append("\n");
+                }
+                return result.toString();
             }
-            reader.close();
-            file_stream.close();
-            return result.toString();
         } catch (IOException e) {
             e.printStackTrace();
         }

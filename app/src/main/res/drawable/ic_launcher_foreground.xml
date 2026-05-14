@@ -7,10 +7,10 @@
 
     <!-- 缩放比例由 0.65 缩小至 0.52 (80%)，并重新计算居中偏移 -->
     <group
-        android:scaleX="0.52"
-        android:scaleY="0.52"
-        android:translateX="145.54"
-        android:translateY="146.12">
+        android:scaleX="0.46"
+        android:scaleY="0.46"
+        android:translateX="163.73"
+        android:translateY="164.39">
 
         <path
             android:fillColor="#4778bc"
