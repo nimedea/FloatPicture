@@ -30,12 +30,10 @@ public class PictureSettingsActivity extends AppCompatActivity {
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         ActionBar actionBar = getSupportActionBar();
-        Intent intent = getIntent();
-        if (actionBar != null && intent != null) {
-            if (!intent.getBooleanExtra(Config.INTENT_PICTURE_EDIT_MODE, false)) {
-                actionBar.setHomeButtonEnabled(true);
-                actionBar.setDisplayHomeAsUpEnabled(true);
-            }
+        if (actionBar != null) {
+            // 无论是否是编辑模式，都显示左上角的返回按钮
+            actionBar.setHomeButtonEnabled(true);
+            actionBar.setDisplayHomeAsUpEnabled(true);
         }
     }
 
@@ -65,7 +63,7 @@ public class PictureSettingsActivity extends AppCompatActivity {
     public void onBackPressed() {
         mPictureSettingsFragment.exit();
         finish();
-        super.onBackPressed();
+        // 注意：这里已经 finish 了，不需要再执行 super.onBackPressed() 否则可能导致重复退出
     }
 
     @Override
@@ -81,6 +79,8 @@ public class PictureSettingsActivity extends AppCompatActivity {
             mPictureSettingsFragment.saveAllData();
             finish();
         } else if (itemId == android.R.id.home) {
+            // 当点击左上角返回按钮（id 为 android.R.id.home）时
+            // 调用 fragment 的 exit() 方法来执行不保存的清理/还原逻辑
             mPictureSettingsFragment.exit();
             finish();
         }
@@ -89,7 +89,9 @@ public class PictureSettingsActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        mPictureSettingsFragment.clearEditView();
+        if (mPictureSettingsFragment != null) {
+            mPictureSettingsFragment.clearEditView();
+        }
         System.gc();
         super.onDestroy();
     }
